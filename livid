@@ -1,0 +1,317 @@
+#!/bin/bash
+#set -x
+#Vishnu Raghuram 2021-03-1
+#LIVID: Locus specIfic Variant IDentification 
+#bash script for extracting a locus from any given WGS and identifying variants when compared to a reference locus.
+
+
+
+version="0.2"
+USAGE=$(echo -e "\n\
+LIVID: Locus specIfic Variant IDentification  \n\n\
+VERSION: livid v$version \n\n\
+USAGE:   \
+livid [options] -i filename.fasta -r reference.gbk -p primers.fasta -x <int> -y <int> -d <int> \n\n\
+FLAGS: \n\
+  -i | --input           REQUIRED: Input genome in FASTA format\n\
+  -r | --reference       REQUIRED: Reference locus/gene sequence in GENBANK or FASTA format (Use genbank for annotated frameshifts) \n\
+  -p | --primers         REQUIRED: File containing forward and reverse primer in FASTA format \n\
+  -d | --maxdiff         REQUIRED: Integer for maximum number of primer mismatches allowed \n\
+  -x | --minamp          REQUIRED: minamp parameter for usearch
+  -y | --maxamp          REQUIRED: maxamp parameter for usearch
+  -f | --force           Force overwrite existing results directory\n\
+  -h | --help            Print this help message and exit\n\
+  -v | --version         Print version and exit\n\n\
+SOURCE:  COMING SOON\n\n\
+")
+
+force=0
+mumm=0
+script_dir=$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )
+extraction="pcr"
+
+if [[ ! $1 ]]
+ then
+	echo -e "$USAGE"
+	exit
+fi	
+
+while :; do
+	case $1 in
+		-h|-\?|--help) #Print usage and exit
+			echo -e "$USAGE"
+			shift
+			exit
+			;;
+			
+		-i|--input) #Save input with specified path to $fasta_path
+			if [[ $2 && $2 != -* ]]
+			 then
+				fasta_path=$2
+				bname=$(basename $fasta_path)
+				fna_name="${bname%.*}"
+				echo -e "Processing $fasta_path ..."
+				shift
+			else
+				1>&2 echo -e " -i requires an argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-r|--reference) #Save input with specified path to $fasta_path
+			if [[ $2 && $2 != -* ]]
+			 then
+				reference_path=$2
+				echo -e "Processing $reference_path ..."
+				shift
+			else
+				1>&2 echo -e " -r requires an argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-p|--primers) #Save input with specified path to $fasta_path
+			if [[ $2 && $2 != -* ]]
+			 then
+				primers_path=$2
+				echo -e "Processing $primers_path ..."
+				shift
+			else
+				1>&2 echo -e " -p requires an argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-d|--maxdiff)
+			if [[ $2 && $2 != -* ]]
+			 then
+				maxdiff=$2
+				shift
+			else
+				1>&2 echo -e " -d requires a positive integer argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-x|--minamp)
+			if [[ $2 && $2 != -* ]]
+			 then
+				minamp=$2
+				shift
+			else
+				1>&2 echo -e " -x requires a positive integer argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-y|--maxamp)
+			if [[ $2 && $2 != -* ]]
+			 then
+				maxamp=$2
+				shift
+			else
+				1>&2 echo -e " -y requires a positive integer argument.\n$USAGE "
+				exit 1
+			fi
+			;;
+
+		-f|--force)
+			force=$((force + 1))
+			shift
+			continue
+			;;
+
+		-v|--version)
+			echo -e "livid v$version"
+			shift
+			exit
+			;;
+			
+		--)
+			shift
+			break
+			;;
+			
+		-?*)
+			1>&2 echo -e " $1 is an invalid option. \n$USAGE "
+			shift
+			exit 1
+			;;
+			
+		*)
+			shift
+			break
+	esac
+	shift
+done
+
+###########################
+#### ERROR REPORT VARS ####
+###########################
+
+input_check="fail"
+outdir_check="fail"
+usearch_check="fail"
+snippy_check="fail"
+
+#Error report file
+echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" > $bname-error-report.tab
+
+###########################
+#### INPUT VALIDATIONS ####
+###########################
+
+
+#check if results directory already exists
+if [[ -d $fna_name-results ]]
+then
+	if [[ $force > 0 ]]
+	 then
+		echo "Results directory already exists, -f specified, overwriting..."
+		rm -rf $fna_name-results
+		mkdir $fna_name-results
+		outdir_check="pass"
+	else	
+		1>&2 echo "Results directory already exists, cannot overwrite. Use option -f to force overwrite"
+		#Error report file
+		echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" >> $bname-error-report.tab
+		exit 1
+	fi	
+else	
+	mkdir $fna_name-results
+	outdir_check="pass"
+fi
+
+# validate input fasta
+validate_fasta () {
+	if [[ -f $1 ]] #Check if input is a file
+	 then
+		if [[ $(file $1 | grep -c "compressed") -eq 0 ]] #checks if file is compressed
+		 then	
+			if [[ $(grep -q "^@" $1 ; echo $?) -eq 1 && $(seqkit seq -t dna -n --quiet $1 | wc -l) -ge 1 ]] # if file is NOT fastq and checks if seqkit can parse the file 
+			 then	
+				if [[ $(grep -v ">" $1 | grep -q -i "[^ATCGNWSMKRY]"; echo $?) -eq 1 ]] #check if seqence has characters other than ATGCN
+				 then
+					1>&2 echo -e "$1 is a valid fasta file"
+				else
+					1>&2 echo -e "Seqence has non-standard nucleic acid characters\n$USAGE" 
+				echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" >> $bname-error-report.tab
+					exit 1 
+				fi
+			else
+				1>&2 echo -e "Input file not in FASTA format\n$USAGE"
+				echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" >> $bname-error-report.tab
+				exit 1
+			fi
+		else
+			1>&2 echo -e "Compressed input not supported (for now)\n$USAGE"
+				echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" >> $bname-error-report.tab
+			exit 1
+		fi	
+	else
+		1>&2 echo -e "Invalid input\n$USAGE"
+		echo -e "#input_name\tinput_check\toutdir_check\tusearch_check\tsnippy_check" >> $bname-error-report.tab
+		exit 1
+	fi
+}
+
+validate_fasta $fasta_path
+validate_fasta $reference_path
+validate_fasta $primers_path
+$input_check="pass"
+
+#################################
+##### EXTRACTING AGR OPERON #####
+#################################
+
+# Get operating system
+if [[ $OSTYPE == *[lL]inux* ]]
+ then
+	usearch_bin=usearch11.0.667_i86linux32
+elif [[ $OSTYPE == *[dD]arwin* ]]
+ then
+	usearch_bin=usearch11.0.667_i86osx32
+else
+	1>&2 echo -e "Error running usearch, unable to determine usearch version."
+	fs="u"
+		exit 1
+fi	
+
+# Check if usearch11.0.667 binary is in PATH
+path_to_usearch=$(which $usearch_bin)
+
+if [[ -x $path_to_usearch ]]
+ then
+	# Check usearch exit status
+	if [[ $($usearch_bin &> /dev/null; echo $?) > 0 ]]
+	 then
+		1>&2 echo -e "Error running usearch, please make sure usearch is installed correctly."
+		fs="u"
+		exit 1
+	else	
+		echo -e "usearch found"
+		usearch_check="pass"
+	fi
+else
+	1>&2 echo -e "$usearch_bin not in path, cannot perform frameshift detection\n please download usearch11.0.667 from https://www.drive5.com/usearch/download.html"
+	1>&2 echo -e "For example:\n\tcurl 'https://www.drive5.com/downloads/$usearch_bin.gz' --output $usearch_bin.gz\n\tgunzip $usearch_bin.gz\n\tchmod 755 $usearch_bin\n\tcp ./$usearch_bin $script_dir/" 
+	fs="u"
+	exit 1
+fi
+
+# In-silico PCR using predefined primers(agr_operon_primers.fa) to extract agr operon
+echo -e "USEARCH COMMAND:"
+echo -e "$usearch_bin -search_pcr $fasta_path -db $primers_path -strand both -maxdiffs $maxdiff -minamp $minamp -maxamp $maxamp -ampout $fna_name-results/$fna_name-pcr_extracted.fna &>$fna_name-results/$fna_name-pcr-log.txt\n\n"
+$usearch_bin -search_pcr $fasta_path -db $primers_path -strand both -maxdiffs $maxdiff -minamp $minamp -maxamp $maxamp -ampout $fna_name-results/$fna_name-pcr_extracted.fna &>$fna_name-results/$fna_name-pcr-log.txt
+	
+
+#Check if agr operon file is empty
+if [[ -s $fna_name-results/$fna_name-pcr_extracted.fna ]] 
+then
+	echo -e "Locus extraction successful"
+else	
+	echo -e "Unable to find specified region, check $fna_name-results/$fna_name-$extraction-log.txt"
+	fs="u"
+	exit
+fi
+
+
+################################
+##### FRAMESHIFT DETECTION #####
+################################
+
+#Running snippy with a group specific reference to call variants in the agr operon
+snippy --outdir $fna_name-results/$fna_name-snippy --ctgs $fna_name-results/$fna_name-pcr_extracted.fna --ref $reference_path --minqual 1 --mincov 2 2> $fna_name-results/$fna_name-snippy-log.txt
+
+#Check if snps file is empty
+if [[ -s $fna_name-results/$fna_name-snippy/snps.tab ]]
+then
+	echo -e "Snippy successful"
+	snippy_check="pass"
+else	
+	1>&2 echo -e "Snippy unsuccessful, check $fna_name-results/$fna_name-snippy-log.txt"
+	fs="u"
+	exit 1	
+fi
+
+#Filtering out frameshifts in coding regions from snippy data
+
+echo -e "#filename\tposition\ttype\teffect\tgene" > $fna_name-results/$fna_name-frameshifts.tab
+
+awk -v i="$fna_name" 'BEGIN{FS=OFS="\t"};{if($7=="CDS") print i,$2,$3,$11,$13}' $fna_name-results/$fna_name-snippy/snps.tab | sed 's/ /\t/g' | grep -E -v '[conservative|disruptive]_inframe_[insertion|deletion]|splice_region_variant&stop_retained_variant|intergenic_region|initiator_codon_variant|gene_fusion|missense_variant' | grep -E -v 'synonymous_variant' >> $fna_name-results/$fna_name-frameshifts.tab
+
+#Subtract 1 from $fs to account for the header
+fs=$(($(cat $fna_name-results/$fna_name-frameshifts.tab | wc -l)-1))
+
+
+#Check if frameshifts found
+if [[ $fs > 0 ]] 
+then
+	echo -e "Frameshifts in specified region found, check $fna_name-results/$fna_name-frameshifts.tab"
+else	
+	echo -e "No frameshifts found"
+	exit	
+fi
+
+
+	
