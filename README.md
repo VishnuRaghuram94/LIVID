@@ -16,7 +16,7 @@ LIVID is based on [AgrVATE](https://github.com/VishnuRaghuram94/AgrVATE) and the
 
 # INSTALLATION:
 
-Please see the [PREREQUISITES](#PREREQUISITES) section for all the tools required to run LIVID. For ease of use, I recommended you install LIVID using [Conda](https://conda.io/en/latest/).
+Please see the [PREREQUISITES](#PREREQUISITES) section for all the tools required to run LIVID. For ease of use, I recommended you install LIVID using [Conda](https://conda.io/en/latest/). ( COMING SOON )
 
 	
 	conda create -n livid -c bioconda livid
