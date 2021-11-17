@@ -50,9 +50,6 @@ Camacho, C., Coulouris, G., Avagyan, V. et al. BLAST+: architecture and applicat
 	
 * __[Snippy](https://github.com/tseemann/snippy)__  
 Seemann T (2015). Snippy: fast bacterial variant calling from NGS reads. https://github.com/tseemann/snippy
-	
-* __[HMMER](http://hmmer.org/)__  
-S.R. Eddy. Biological sequence analysis using profile hidden Markov models. http://hmmer.org/
 
 * __[SeqKit](https://bioinf.shenwei.me/seqkit/)__  
 Shen W, Le S, Li Y, Hu F (2016) SeqKit: A Cross-Platform and Ultrafast Toolkit for FASTA/Q File Manipulation. PLoS ONE 11(10): e0163962. https://doi.org/10.1371/journal.pone.0163962
