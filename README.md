@@ -16,10 +16,10 @@ LIVID is based on [AgrVATE](https://github.com/VishnuRaghuram94/AgrVATE) and the
 
 # INSTALLATION:
 
-Please see the [PREREQUISITES](#PREREQUISITES) section for all the tools required to run LIVID. For ease of use, I recommended you install LIVID using [Conda](https://conda.io/en/latest/). ( COMING SOON )
+Please see the [PREREQUISITES](#PREREQUISITES) section for all the tools required to run LIVID. For ease of use, I recommended you install LIVID using [Conda](https://conda.io/en/latest/). LIVID will be uploaded to Bioconda soon. 
 
 	
-	conda create -n livid -c bioconda livid
+	conda create -n livid -c vishnuraghuram94 livid
 	conda activate livid
 	
 This will install all necessary dependencies EXCEPT Usearch.  	
