@@ -10,6 +10,8 @@
 
 LIVID accepts a query genome, a reference genome and primers flanking the region of interest as inputs. LIVID then extracts the region of interest from the query genome using in-silico PCR and identifies variants in this region when compared to the reference genome. LIVID is designed to compare a single gene/operon across 1000s of microbial genomes. 
 
+Please refer to publication [10.1099/mic.0.001445](https://www.microbiologyresearch.org/content/journal/micro/10.1099/mic.0.001445) as an example use-case for LIVID
+
 LIVID is based on [AgrVATE](https://github.com/VishnuRaghuram94/AgrVATE) and therefore has very similar installation instructions, prerequisites, usage instructions and output files. 
 
 ---
